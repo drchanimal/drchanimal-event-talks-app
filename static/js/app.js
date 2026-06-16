@@ -8,6 +8,7 @@ let searchQuery = '';
 // DOM Elements
 const releasesFeed = document.getElementById('releases-feed');
 const btnRefresh = document.getElementById('btn-refresh');
+const btnExport = document.getElementById('btn-export');
 const refreshIcon = document.getElementById('refresh-icon');
 const cacheTimeText = document.getElementById('cache-time-text');
 const searchInput = document.getElementById('search-input');
@@ -55,9 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup event listeners
 function setupEventListeners() {
-    // Refresh buttons
+    // Refresh & Export buttons
     btnRefresh.addEventListener('click', () => fetchReleases(true));
     btnRetry.addEventListener('click', () => fetchReleases(true));
+    btnExport.addEventListener('click', exportToCSV);
     
     // Search input
     searchInput.addEventListener('input', (e) => {
@@ -322,6 +324,13 @@ function renderFeed() {
                 ${item.description}
             </div>
             <div class="card-footer">
+                <button class="btn-card-copy" onclick="event.stopPropagation();" aria-label="Copy note to clipboard">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-copy">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <span>Copy</span>
+                </button>
                 <a href="${item.link}" target="_blank" rel="noopener noreferrer" class="btn-card-link" onclick="event.stopPropagation();">
                     <span>View Docs</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -341,6 +350,24 @@ function renderFeed() {
         tweetBtn.addEventListener('click', (e) => {
             e.stopPropagation(); // Prevent duplicate calls
             selectReleaseNote(item);
+        });
+
+        // Add Copy button interaction
+        const copyBtn = card.querySelector('.btn-card-copy');
+        copyBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const copyText = `BigQuery Release Note (${item.date} - ${item.type}):\n${item.plain_text}\n\nDocs: ${item.link}`;
+            navigator.clipboard.writeText(copyText).then(() => {
+                const btnText = copyBtn.querySelector('span');
+                copyBtn.classList.add('copied');
+                btnText.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyBtn.classList.remove('copied');
+                    btnText.textContent = 'Copy';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+            });
         });
         
         releasesFeed.appendChild(card);
@@ -435,4 +462,39 @@ function closeDrawer() {
     tweetDrawer.classList.remove('active');
     drawerOverlay.classList.remove('active');
     document.body.style.overflow = ''; // Resume scrolling
+}
+
+// Export current filtered releases to CSV
+function exportToCSV() {
+    if (filteredReleases.length === 0) {
+        alert('No release notes to export!');
+        return;
+    }
+    
+    const headers = ['ID', 'Date', 'Type', 'Description', 'Link'];
+    const csvRows = [headers.map(val => `"${val.replace(/"/g, '""')}"`).join(',')];
+    
+    filteredReleases.forEach(item => {
+        const row = [
+            item.id,
+            item.date,
+            item.type,
+            item.plain_text,
+            item.link
+        ];
+        csvRows.push(row.map(val => `"${val.replace(/"/g, '""')}"`).join(','));
+    });
+    
+    const csvString = csvRows.join('\r\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `bigquery_releases_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }
